@@ -711,14 +711,11 @@ workflow {
 
   fastqcResults = fastqc(samples_qch)
 
-  fastqc_checkInput = samples_qch.join(fastqcResults)
-  fastqc_checkResults = fastqc_check(fastqc_checkInput)
+  fastqc_checkResults = fastqc_check(samples_qch.join(fastqcResults))
 
-  trimmomaticInput = samples_qch.join(fastqc_checkResults) 
-  trimmomaticResults = trimmomatic(trimmomaticInput, params.trimmomaticAdaptorsFile)
+  trimmomaticResults = trimmomatic(samples_qch.join(fastqc_checkResults), params.trimmomaticAdaptorsFile)
 
-  hisat2Input = samples_qch.join(fastqc_checkResults).join(trimmomaticResults)
-  hisat2Results = hisat2(hisat2Input, hisat2IndexResults[1], hisat2IndexResults[0])
+  hisat2Results = hisat2(samples_qch.join(fastqc_checkResults).join(trimmomaticResults), hisat2IndexResults[1], hisat2IndexResults[0])
 
   reorderFastaResults = reorderFasta(hisat2Results[1].first(), hisat2IndexResults[3])
 
@@ -730,8 +727,7 @@ workflow {
 
   mpileupResults = mpileup(gatkResults, reorderFastaResults[0], reorderFastaResults[1])
 
-  varscanInput = gatkResults.join(mpileupResults)
-  varscanResults = varscan(varscanInput, varscan_jar_path)
+  varscanResults = varscan(gatkResults.join(mpileupResults), varscan_jar_path)
   
   concatSnpsAndIndelsResults = concatSnpsAndIndels(varscanResults[0])
 
@@ -751,7 +747,7 @@ workflow {
 
   htseqCountResults = htseqCount(sortForCountingResults, params.gtfFile)
   
-  calculateTPM = calculateTPM(htseqCountResults, params.geneFootprintFile)
+  calculateTPMResults = calculateTPM(htseqCountResults, params.geneFootprintFile)
 
   makeWindowFileResults = makeWindowFile(reorderFastaResults[1], params.winLen)
   
