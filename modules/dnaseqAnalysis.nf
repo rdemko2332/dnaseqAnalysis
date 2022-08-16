@@ -145,7 +145,12 @@ process picard {
 
   script:
     def jarPath = picardJar.name == 'NA' ? "/usr/picard/picard.jar" : picardJar.name
-    template 'picard.bash'
+    """
+    java -jar $jarPath AddOrReplaceReadGroups I=result_sorted_ds.bam O=picard.bam RGID=$sampleName RGSM=$sampleName RGLB=NA RGPL=NA RGPU=NA
+    java -jar $jarPath CreateSequenceDictionary R=genome_reordered.fa UR=genome_reordered.fa
+    java -jar $jarPath BuildBamIndex I=picard.bam
+    java -jar $jarPath CollectAlignmentSummaryMetrics R=genome_reordered.fa I=picard.bam O=summaryMetrics.txt
+    """
 }
 
 
@@ -166,7 +171,10 @@ process gatk {
 
   script:
     def jarPath = gatkJar.name == 'NA' ? "/usr/GenomeAnalysisTK.jar" : gatkJar.name
-    template 'gatk.bash'
+    """
+    java -jar $jarPath -I picard.bam -R genome_reordered.fa -T RealignerTargetCreator -o forIndelRealigner.intervals 2>realaligner.err
+    java -jar $jarPath -I picard.bam -R genome_reordered.fa -T IndelRealigner -targetIntervals forIndelRealigner.intervals -o result_sorted_gatk.bam 2>indelRealigner.err
+    """
 }
 
 
@@ -202,7 +210,31 @@ process varscan {
     
   script:
     def jarPath = varscanJar.name == 'NA' ? "/usr/local/VarScan.jar" : varscanJar.name
-    template 'varscan.bash'
+    """
+    echo $sampleName >vcf_sample_name
+    java -jar $jarPath mpileup2snp result.pileup \
+      --vcf-sample-list vcf_sample_name \
+      --output-vcf 1 --p-value $params.varscanPValue \
+      --min-coverage $params.varscanMinCoverage \
+      --min-var-freq $params.varscanMinVarFreqSnp \
+      >varscan.snps.vcf  2>varscan_snps.err
+    java -jar $jarPath mpileup2indel result.pileup \
+      --vcf-sample-list vcf_sample_name \
+      --output-vcf 1 --p-value $params.varscanPValue \
+      --min-coverage $params.varscanMinCoverage \
+      --min-var-freq $params.varscanMinVarFreqCons \
+      >varscan.indels.vcf  2> varscan_indels.err
+    java -jar $jarPath mpileup2cns result.pileup \
+      --p-value $params.varscanPValue \
+      --min-coverage $params.varscanMinCoverage \
+      --min-var-freq $params.varscanMinVarFreqCons \
+      > varscan.cons 2>varscan_cons.err
+    bgzip varscan.snps.vcf
+    tabix -fp vcf varscan.snps.vcf.gz
+    bgzip varscan.indels.vcf
+    tabix -fp vcf varscan.indels.vcf.gz
+    bgzip varscan.cons
+    """
 }
 
 
